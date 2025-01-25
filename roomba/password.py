@@ -9,6 +9,15 @@ Quick Program to get blid and password from roomba
 Nick Waterton 5th May 2017: V 1.0: Initial Release
 Nick Waterton 22nd Dec 2020: V2.0: Updated for i and S Roomba versions, update to minimum python version 3.6
 '''
+import ssl
+import urllib.request
+
+context = ssl.create_default_context()
+context.options |= ssl.OP_LEGACY_SERVER_CONNECT  # Enable legacy renegotiation for this context
+
+with urllib.request.urlopen("https://10.0.3.37", context=context) as response:
+    print(response.read().decode())
+
 
 from pprint import pformat
 import json
@@ -176,59 +185,57 @@ class Password(object):
         return self.save_config_file(file_roombas)
         
     def get_password_from_roomba(self, addr):
-        '''
-        Send MQTT magic packet to addr
-        this is 0xf0 (mqtt reserved) 0x05(data length) 0xefcc3b2900 (data)
-        Should receive 37 bytes containing the password for roomba at addr
-        This is is 0xf0 (mqtt RESERVED) length (0x23 = 35) 0xefcc3b2900 (magic packet), 
-        followed by 0xXXXX... (30 bytes of password). so 7 bytes, followed by 30 bytes of password
-        total of 37 bytes
-        Uses 10 second timeout for socket connection
-        '''
-        data = b''
-        packet = bytes.fromhex('f005efcc3b2900')
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(10)
-        
-        #context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        #context.set_ciphers('DEFAULT@SECLEVEL=1:HIGH:!DH:!aNULL')
-        wrappedSocket = context.wrap_socket(sock)
-        
-        try:
+    '''
+    Send MQTT magic packet to addr
+    Should receive 37 bytes containing the password for Roomba at addr.
+    '''
+    data = b''
+    packet = bytes.fromhex('f005efcc3b2900')
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(10)
+
+    # Create an SSL context with unsafe legacy renegotiation enabled
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
+    # Enable unsafe legacy renegotiation
+    context.options |= ssl.OP_LEGACY_SERVER_CONNECT
+
+    try:
+        with context.wrap_socket(sock, server_hostname=addr) as wrappedSocket:
             wrappedSocket.connect((addr, 8883))
             self.log.debug('Connection Successful')
             wrappedSocket.send(packet)
             self.log.debug('Waiting for data')
-        
+
             while len(data) < 37:
                 data_received = wrappedSocket.recv(1024)
-                data+= data_received
+                data += data_received
                 if len(data_received) == 0:
-                    self.log.info("socket closed")
+                    self.log.info("Socket closed")
                     break
-                
-            wrappedSocket.close()
-            return data
-            
-        except socket.timeout as e:
-            self.log.error('Connection Timeout Error (for {}): {}'.format(addr, e))
-        except (ConnectionRefusedError, OSError) as e:
-            if e.errno == 111:      #errno.ECONNREFUSED
-                self.log.error('Unable to Connect to roomba at ip {}, make sure nothing else is connected (app?), '
-                               'as only one connection at a time is allowed'.format(addr))
-            elif e.errno == 113:    #errno.No Route to Host
-                self.log.error('Unable to contact roomba on ip {} is the ip correct?'.format(addr))
-            else:
-                self.log.error("Connection Error (for {}): {}".format(addr, e))
-        except Exception as e:
-            self.log.exception(e)
 
-        self.log.error('Unable to get password from roomba')
-        return data
-        
+            return data
+
+    except ssl.SSLError as e:
+        self.log.error(f'SSL Error: {e}')
+        self.log.error('Ensure the Roomba firmware supports legacy TLS renegotiation.')
+    except socket.timeout as e:
+        self.log.error(f'Connection Timeout Error (for {addr}): {e}')
+    except (ConnectionRefusedError, OSError) as e:
+        if e.errno == 111:  # errno.ECONNREFUSED
+            self.log.error(f'Unable to connect to Roomba at IP {addr}. Ensure no other connections are active.')
+        elif e.errno == 113:  # errno.No Route to Host
+            self.log.error(f'Unable to contact Roomba at IP {addr}. Is the IP correct?')
+        else:
+            self.log.error(f"Connection Error (for {addr}): {e}")
+    except Exception as e:
+        self.log.exception(e)
+
+    self.log.error('Unable to get password from Roomba')
+    return data
+    
     def save_config_file(self, roomba):
         Config = configparser.ConfigParser()
         if roomba:
