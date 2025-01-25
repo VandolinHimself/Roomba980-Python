@@ -13,7 +13,7 @@ import ssl
 import urllib.request
 
 context = ssl.create_default_context()
-context.options |= ssl.OP_LEGACY_SERVER_CONNECT  # Enable legacy renegotiation for this context
+context.options |= ssl.OP_LEGACY_SERVER_CONNECT
 
 with urllib.request.urlopen("https://10.0.3.37", context=context) as response:
     print(response.read().decode())
@@ -57,20 +57,17 @@ class Password(object):
         self.log.info("Using Password version {}".format(self.__version__))
         
     def read_config_file(self):
-        #read config file
         Config = configparser.ConfigParser()
         roombas = {}
         try:
             Config.read(self.file)
             self.log.info("reading/writing info from config file {}".format(self.file))
             roombas = {s:{k:literal_eval(v) if k in self.config_dicts else v for k, v in Config.items(s)} for s in Config.sections()}   
-            #self.log.info('data read from {}: {}'.format(self.file, pformat(roombas)))
-        except Exception as e:
+            except Exception as e:
             self.log.exception(e)
         return roombas
 
     def receive_udp(self):
-        #set up UDP socket to receive data from robot
         port = 5678
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(10)
@@ -84,14 +81,8 @@ class Password(object):
         while True:
             try:
                 udp_data, addr = s.recvfrom(1024)   #wait for udp data
-                #self.log.debug('Received: Robot addr: {} Data: {}'.format(addr, udp_data))
                 if udp_data and udp_data.decode() != message:
                     try:
-                        #if self.address != addr[0]:
-                        #    self.log.warning(
-                        #        "supplied address {} does not match "
-                        #        "discovered address {}, using discovered "
-                        #        "address...".format(self.address, addr[0]))
                         
                         parsedMsg = json.loads(udp_data.decode())
                         if addr[0] not in roomba_dict.keys():
@@ -161,8 +152,6 @@ class Password(object):
                 if char == 's':
                     self.log.info('Skipping')
                     continue
-
-            #self.log.info("Received: %s"  % json.dumps(parsedMsg, indent=2))
 
             if password is None:
                 self.log.info("Roomba ({}) IP address is: {}".format(robotname, addr))
@@ -242,7 +231,6 @@ class Password(object):
             for addr, data in roomba.items():
                 Config.add_section(addr)
                 for k, v in data.items():
-                    #self.log.info('saving K: {}, V: {}'.format(k, pformat(v) if k in self.config_dicts else v))
                     Config.set(addr,k, pformat(v) if k in self.config_dicts else v)
             # write config file
             with open(self.file, 'w') as cfgfile:
@@ -271,7 +259,7 @@ def main():
     LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
     logging.basicConfig(format=LOG_FORMAT, datefmt=LOG_DATE_FORMAT, level=loglevel)
     
-    #-------- Command Line -----------------
+#-- Command Line -----------------------
     parser = argparse.ArgumentParser(
         description='Get Robot passwords and update config file')
     parser.add_argument(
